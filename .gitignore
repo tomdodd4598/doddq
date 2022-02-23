@@ -23,6 +23,7 @@ eclipse/
 /.vs
 
 Anaconda.lnk
+build.bat
 dist.bat
 dist/
 src/doddq.egg-info/*

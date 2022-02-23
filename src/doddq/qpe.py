@@ -1,4 +1,4 @@
-import src.doddq.helpers as helpers
+import doddq.helpers as helpers
 
 import numpy as np
 

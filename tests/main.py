@@ -1,5 +1,5 @@
-import src.doddq.qpe as qpe
-import src.doddq.helpers as helpers
+import doddq.qpe as qpe
+import doddq.helpers as helpers
 
 import numpy as np
 
