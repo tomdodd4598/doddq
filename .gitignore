@@ -27,4 +27,4 @@ build.bat
 dist.bat
 dist/
 src/doddq.egg-info/*
-tests/
+rodeo-arena/
