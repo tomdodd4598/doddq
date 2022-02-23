@@ -5,7 +5,7 @@ DoddQ
 Summary
 -------
 
-A simple library for use with Qiskit. Available as the ['doddq'](https://pypi.org/project/doddq/) package (`pip install doddq`).
+A simple library for use with Qiskit. Requires NumPy! Available as the ['doddq'](https://pypi.org/project/doddq/) package (`pip install doddq`).
 
 
 Permissions
