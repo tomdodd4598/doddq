@@ -1,98 +1,78 @@
-import doddq.helpers as helpers
+from doddq import helpers
 
 import numpy as np
+import scipy
 
-from qiskit import QuantumCircuit, QuantumRegister
-from qiskit.circuit.library import HGate, PhaseGate, QFT
-from typing import Callable
-
-
-class GeneralizedQPEInfo:
-
-    def __init__(self, qr_eval: QuantumRegister, qr_state: QuantumRegister, circuit: QuantumCircuit) -> None:
-        self.qr_eval = qr_eval
-        self.qr_state = qr_state
-        self.circuit = circuit
-
-
-class GeneralizedQPE(QuantumCircuit):
-
-    def __init__(
-            self,
-            num_eval_qubits: int,
-            num_state_qubits: int,
-            qc_eval_begin: QuantumCircuit,
-            qc_eval_end: QuantumCircuit,
-            qc_state_evolution: Callable[[GeneralizedQPEInfo, int], None],
-            name: str = 'GeneralizedQPE'
-    ) -> None:
-        qr_eval = QuantumRegister(num_eval_qubits, 'eval')
-        qr_state = QuantumRegister(num_state_qubits, 'state')
-        circuit = QuantumCircuit(qr_eval, qr_state, name=name)
-
-        info = GeneralizedQPEInfo(qr_eval, qr_state, circuit)
-
-        circuit.compose(qc_eval_begin, qubits=qr_eval[:], inplace=True)
-        for i in range(num_eval_qubits):
-            qc_state_evolution(info, i)
-        circuit.compose(qc_eval_end, qubits=qr_eval[:], inplace=True)
-
-        super().__init__(*circuit.qregs, name=circuit.name)
-        self.compose(circuit.to_gate(), qubits=self.qubits, inplace=True)
-
-
-def standard_qpe(
-        num_eval_qubits: int,
-        num_state_qubits: int,
-        unitary: QuantumCircuit,
-        name: str = 'StandardQPE'
-) -> GeneralizedQPE:
-    def state_evolution(info: GeneralizedQPEInfo, index: int) -> None:
-        controlled_unitary_pow = unitary.power(2 ** index).control()
-        info.circuit.compose(controlled_unitary_pow, qubits=[info.qr_eval[index]] + info.qr_state[:], inplace=True)
-
-    qc_eval_begin = QuantumCircuit(num_eval_qubits)
-    qc_eval_begin.append(HGate(), [qc_eval_begin.qubits])
-
-    qc_eval_end = QFT(num_eval_qubits, inverse=True, do_swaps=False).reverse_bits()
-
-    return GeneralizedQPE(num_eval_qubits, num_state_qubits, qc_eval_begin, qc_eval_end, state_evolution, name)
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from typing import Any
 
 
 def rodeo_qpe(
-        num_eval_qubits: int,
-        num_state_qubits: int,
+        num_cycles: int,
         hamiltonian: np.ndarray,
+        initial_state: Any,
         target_energy: float,
-        time_arr: np.ndarray,
-        name: str = 'RodeoQPE'
-) -> GeneralizedQPE:
-    def unitary(index: int) -> QuantumCircuit:
-        return helpers.time_evolution_circuit(hamiltonian, time_arr[index])
+        time_arr: np.ndarray
+) -> QuantumCircuit:
+    obj_qubits = helpers.int_log2(hamiltonian.shape[0])
 
-    def phase(index: int) -> PhaseGate:
-        return PhaseGate(target_energy * time_arr[index])
+    qr_anc = QuantumRegister(1, 'qr_anc')
+    cr_anc = ClassicalRegister(num_cycles, 'cr_anc')
+    qr_obj = QuantumRegister(obj_qubits, 'qr_obj')
+    circuit = QuantumCircuit(qr_anc, cr_anc, qr_obj)
 
-    def state_evolution(info: GeneralizedQPEInfo, index: int) -> None:
-        info.circuit.compose(unitary(index).control(), qubits=[info.qr_eval[index]] + info.qr_state[:], inplace=True)
-        info.circuit.compose(phase(index), qubits=[index], inplace=True)
+    if initial_state is not None:
+        circuit.initialize(initial_state, qr_obj)
 
-    qc_eval_begin = QuantumCircuit(num_eval_qubits)
-    qc_eval_begin.append(HGate(), [qc_eval_begin.qubits])
+    for i in range(num_cycles):
+        time = time_arr[i]
+        circuit.h(qr_anc)
+        unitary = helpers.controlled_unitary(scipy.linalg.expm(-1.0j * time * hamiltonian), 1)
+        circuit.unitary(unitary, qr_anc[:] + qr_obj[:])
+        circuit.p(target_energy * time, qr_anc)
+        circuit.h(qr_anc)
+        circuit.measure(qr_anc, cr_anc[i])
+        circuit.reset(qr_anc)
 
-    qc_eval_end = QuantumCircuit(num_eval_qubits)
-    qc_eval_end.append(HGate(), [qc_eval_begin.qubits])
-
-    return GeneralizedQPE(num_eval_qubits, num_state_qubits, qc_eval_begin, qc_eval_end, state_evolution, name)
+    return circuit
 
 
-def rodeo_qpe_gaussian(
-        num_eval_qubits: int,
-        num_state_qubits: int,
+def rodeo_qsp(
+        num_cycles: int,
         hamiltonian: np.ndarray,
+        initial_state: Any,
+        expected_state: Any,
         target_energy: float,
-        time_stddev: float,
-        name: str = 'RodeoQPE'
-) -> GeneralizedQPE:
-    time_arr = helpers.rand_gaussian_array(num_eval_qubits, time_stddev)
-    return rodeo_qpe(num_eval_qubits, num_state_qubits, hamiltonian, target_energy, time_arr, name)
+        time_arr: np.ndarray
+) -> QuantumCircuit:
+    obj_qubits = helpers.int_log2(hamiltonian.shape[0])
+
+    qr_anc = QuantumRegister(1, 'qr_anc')
+    cr_anc = ClassicalRegister(num_cycles, 'cr_anc')
+    qr_obj = QuantumRegister(obj_qubits, 'qr_obj')
+    qr_copy = QuantumRegister(obj_qubits, 'qr_copy')
+    qr_swap = QuantumRegister(1, 'qr_swap')
+    cr_swap = ClassicalRegister(1, 'cr_swap')
+    circuit = QuantumCircuit(qr_anc, cr_anc, qr_obj, qr_copy, qr_swap, cr_swap)
+
+    if initial_state is not None:
+        circuit.initialize(initial_state, qr_obj)
+
+    for i in range(num_cycles):
+        time = time_arr[i]
+        circuit.h(qr_anc)
+        unitary = helpers.controlled_unitary(scipy.linalg.expm(-1.0j * time * hamiltonian), 1)
+        circuit.unitary(unitary, qr_anc[:] + qr_obj[:])
+        circuit.p(target_energy * time, qr_anc)
+        circuit.h(qr_anc)
+        circuit.measure(qr_anc, cr_anc[i])
+        circuit.reset(qr_anc)
+
+    circuit.initialize(expected_state, qr_copy)
+    circuit.h(qr_swap)
+    for i in range(obj_qubits):
+        circuit.cswap(qr_swap, qr_obj[i], qr_copy[i])
+    circuit.h(qr_swap)
+    circuit.measure(qr_swap, cr_swap)
+
+    return circuit

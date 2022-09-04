@@ -26,5 +26,6 @@ Anaconda.lnk
 build.bat
 dist.bat
 dist/
+src/doddq/__pycache__/*
 src/doddq.egg-info/*
 rodeo-arena/
