@@ -13,11 +13,13 @@ from qiskit.extensions import HamiltonianGate
 from qiskit.providers import Backend
 from qiskit.quantum_info import Operator
 from qiskit.result import Result
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+
+pool_size = max(1, mp.cpu_count() - 1)
 
 
 def get_mp_pool() -> mp.Pool:
-    return mp.Pool(mp.cpu_count())
+    return mp.Pool(pool_size)
 
 
 def mp_starmap(function: Callable, *args, chunksize=mp.cpu_count()) -> Any:
@@ -271,7 +273,7 @@ def ibmq_job(circuit: QuantumCircuit, backend: Backend, shots: int, opt: int, lo
     return job.result()
 
 
-def default_job(circuit: QuantumCircuit, backend: Backend, shots: int, log: bool) -> Result:
+def default_job(circuit: QuantumCircuit, backend: Optional[Backend], shots: int, log: bool) -> Result:
     if backend is None:
         return local_simulation_job(circuit, False, shots, 3, log)
     else:
